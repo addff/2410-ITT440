@@ -1,0 +1,148 @@
+version: "3.9"
+
+services:
+  # ---------------------------
+  # 1) MySQL Database
+  # ---------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=secret
+      - MYSQL_DATABASE=testdb
+      - MYSQL_USER=testuser
+      - MYSQL_PASSWORD=secret
+    ports:
+      - "3306:3306"  # Expose MySQL
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "testuser", "-psecret"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  # ---------------------------
+  # 2) phpMyAdmin
+  # ---------------------------
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: pma
+    volumes:
+      - ./custom_autorefresh.php:/etc/phpmyadmin/conf.d/custom_autorefresh.php  # Auto-refresh script
+    environment:
+      - PMA_HOST=mysql
+      - PMA_PORT=3306
+      - PMA_USER=testuser
+      - PMA_PASSWORD=secret
+    ports:
+      - "8080:80"    # Access phpMyAdmin in browser at http://localhost:8080
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # ---------------------------
+  # 3) C Server
+  # ---------------------------
+  c_server:
+    build:
+      context: ./c_server
+      dockerfile: Dockerfile
+    container_name: c_server
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "2001:2001"  # Expose C server on port 2001
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=testdb
+      - DB_USER=testuser
+      - DB_PASS=secret
+
+  # ---------------------------
+  # 4) Python Server
+  # ---------------------------
+  python_server:
+    build:
+      context: ./python_server
+      dockerfile: Dockerfile
+    container_name: python_server
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "2002:2002"  # Expose Python server on port 2002
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=testdb
+      - DB_USER=testuser
+      - DB_PASS=secret
+
+  # ---------------------------
+  # 5) C Client
+  # ---------------------------
+  c_client:
+    build:
+      context: ./c_client
+      dockerfile: Dockerfile
+    container_name: c_client
+    depends_on:
+      - c_server
+    networks:
+      - app_network
+
+  # ---------------------------
+  # 6) Python Client
+  # ---------------------------
+  python_client:
+    build:
+      context: ./python_client
+      dockerfile: Dockerfile
+    container_name: python_client
+    depends_on:
+      - python_server
+    networks:
+      - app_network
+
+  # ---------------------------
+  # 7) Python Server 2
+  # ---------------------------
+  python_server2:
+    build:
+      context: ./python_server2
+      dockerfile: Dockerfile
+    container_name: python_server2
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "2003:2003"  # Expose Python server 2 on port 2003
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=testdb
+      - DB_USER=testuser
+      - DB_PASS=secret
+
+  # ---------------------------
+  # 8) Python Client 2
+  # ---------------------------
+  python_client2:
+    build:
+      context: ./python_client2
+      dockerfile: Dockerfile
+    container_name: python_client2
+    depends_on:
+      - python_server2
+    networks:
+      - app_network
+
+volumes:
+  mysql_data:
+
+networks:
+  app_network:
+    driver: bridge
